@@ -58,6 +58,13 @@ pub struct GlyphRun {
     pub range: Range<ByteIndex>,
 }
 
+pub struct SpaceDelimitedWordSliceIterator<'a> {
+    glyphs: &'a [GlyphRun],
+    index: usize,
+    range: Range<ByteIndex>,
+    reverse: bool,
+}
+
 pub struct NaturalWordSliceIterator<'a> {
     glyphs: &'a [GlyphRun],
     index: usize,
@@ -95,6 +102,43 @@ impl<'a> TextRunSlice<'a> {
         let mut range = self.range;
         range.shift_by(self.offset);
         range
+    }
+}
+
+impl<'a> Iterator for SpaceDelimitedWordSliceIterator<'a> {
+    type Item = TextRunSlice<'a>;
+
+    // inline(always) due to the inefficient rt failures messing up inline heuristics, I think.
+    #[inline(always)]
+    fn next(&mut self) -> Option<TextRunSlice<'a>> {
+        let slice_glyphs;
+        if self.reverse {
+            if self.index == 0 {
+                return None;
+            }
+            self.index -= 1;
+            slice_glyphs = &self.glyphs[self.index];
+        } else {
+            if self.index >= self.glyphs.len() {
+                return None;
+            }
+            slice_glyphs = &self.glyphs[self.index];
+            self.index += 1;
+        }
+
+        let mut byte_range = self.range.intersect(&slice_glyphs.range);
+        let slice_range_begin = slice_glyphs.range.begin();
+        byte_range.shift_by(-slice_range_begin);
+
+        if !byte_range.is_empty() {
+            Some(TextRunSlice {
+                glyphs: &*slice_glyphs.glyph_store,
+                offset: slice_range_begin,
+                range: byte_range,
+            })
+        } else {
+            None
+        }
     }
 }
 
@@ -317,6 +361,22 @@ impl<'a> TextRun {
         }
     }
 
+    /// Returns an iterator that will iterate over all slices of glyphs that represent space delimited
+    /// words in the given range.
+    pub fn space_delimited_word_slices_in_range(&'a self, range: &Range<ByteIndex>)
+                                                -> SpaceDelimitedWordSliceIterator<'a> {
+        let index = match self.index_of_first_glyph_run_containing(range.begin()) {
+            None => self.glyphs.len(),
+            Some(index) => index,
+        };
+        SpaceDelimitedWordSliceIterator {
+            glyphs: &self.glyphs[..],
+            index: index,
+            range: *range,
+            reverse: false,
+        }
+    }
+
     /// Returns an iterator that over natural word slices in visual order (left to right or
     /// right to left, depending on the bidirectional embedding level).
     pub fn natural_word_slices_in_visual_order(&'a self, range: &Range<ByteIndex>)
@@ -342,6 +402,8 @@ impl<'a> TextRun {
             reverse: reverse,
         }
     }
+
+
 
     /// Returns an iterator that will iterate over all slices of glyphs that represent individual
     /// characters in the given range.

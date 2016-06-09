@@ -1578,7 +1578,7 @@ impl Fragment {
             word_break::T::keep_all => {
                 // Break at spaces and not in words.
                 let space_breaking_strategy =
-                    text_fragment_info.run.natural_word_slices_in_range(&text_fragment_info.range);
+                    text_fragment_info.run.space_delimited_word_slices_in_range(&text_fragment_info.range);
                 self.calculate_split_position_using_breaking_strategy(
                     space_breaking_strategy,
                     max_inline_size,
